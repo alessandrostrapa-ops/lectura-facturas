@@ -87,10 +87,12 @@ if archivo_subido is not None:
         if st.button("Extraer datos con IA"):
             with st.spinner('Analizando factura...'):
                 try:
+                    # 1. MODIFICAMOS LA INSTRUCCIÓN: Le damos la orden estricta del formato de número
                     instruccion = """
                     Analiza esta factura. Extrae los productos y devuelve la información estrictamente con este formato:
                     Producto | Precio Costo del Bulto
                     No agregues texto adicional, cantidades compradas, ni introducciones, solo Producto y Precio separados por la barra vertical (|).
+                    REGLA VITAL: El precio debe ser un número puro, usando SOLO un punto (.) para los decimales. No uses separador de miles, ni comas, ni signos de pesos ($). Ejemplo correcto: 1865.09
                     """
                     
                     for intento in range(2):
@@ -115,12 +117,14 @@ if archivo_subido is not None:
                         
                     df_temp = pd.DataFrame(datos, columns=['Producto', 'Precio Costo del Bulto'])
                     df_temp['Producto'] = df_temp['Producto'].str.strip()
-                    df_temp['Precio Costo del Bulto'] = df_temp['Precio Costo del Bulto'].str.strip().astype(float)
+                    
+                    # 2. LIMPIEZA DE CÓDIGO: Por si la IA se rebela y mete un signo peso o un espacio raro
+                    df_temp['Precio Costo del Bulto'] = df_temp['Precio Costo del Bulto'].str.replace('$', '', regex=False).str.strip().astype(float)
                     
                     df_temp['Unidades por Bulto'] = 1
                     
                     st.session_state['factura_temporal'] = df_temp
-                    st.rerun() 
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"Hubo un error de conexión con la IA: {e}")
