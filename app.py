@@ -127,7 +127,13 @@ if archivo_subido is not None:
                     st.rerun()
                     
                 except Exception as e:
-                    st.error(f"Hubo un error de conexión con la IA: {e}")
+                    error_str = str(e)
+                    # Si el error es por límite de cuota (429)
+                    if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                        st.warning("⏳ ¡Fuimos muy rápido! Alcanzamos el límite de lecturas por minuto de Google. Por favor, esperá unos 35 a 60 segundos antes de escanear la próxima factura.")
+                    else:
+                        # Si es cualquier otro error, lo mostramos normal
+                        st.error(f"Hubo un error de conexión con la IA: {error_str}")
 
 # --- PASO 2: SIMULADOR Y REVISIÓN MANUAL ---
 if st.session_state['factura_temporal'] is not None:
