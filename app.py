@@ -36,6 +36,25 @@ cliente_ia = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 modelo_vision = "gemini-3.6-flash"
 
 st.title("Sistema de Lectura de Facturas 🧾")
+# --- BARRA LATERAL (MENU Y SOBRE MÍ) ---
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=100) # Podés cambiar este link por la URL de una foto tuya
+    st.header("👨‍💻 Sobre el Desarrollador")
+    st.markdown("""
+    **Sistema de Gestión Kiosko v1.0**
+    
+    Desarrollado por **Robert Alessandro Strapasson**.
+    
+    Herramienta automatizada con Inteligencia Artificial para conciliación de stock y precios.
+    
+    📫 **Contacto:**
+    - [Email](mailto:tu-correo@gmail.com)
+    - [GitHub](https://github.com/alessandrostrapa-ops)
+    - [LinkedIn](https://linkedin.com/in/tu-perfil)
+    """)
+    
+    st.divider()
+    st.caption("Hecho con ❤️ y Python")
 
 # --- MEMORIA DEL DASHBOARD ---
 if 'tabla_maestra' not in st.session_state:
