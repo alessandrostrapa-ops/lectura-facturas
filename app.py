@@ -6,29 +6,26 @@ import io
 import time
 
 # --- SISTEMA DE LOGIN (SEGURIDAD) ---
-# 1. Creamos la variable de estado para saber si el usuario ya puso la clave
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
 
-# 2. Si NO está autenticado, mostramos el login y frenamos la app
 if not st.session_state['autenticado']:
     st.title("🔒 Acceso Restringido")
     clave_ingresada = st.text_input("Ingresá la contraseña para acceder al sistema:", type="password")
     
     if st.button("Ingresar"):
-        if clave_ingresada == "kiosko2026": # ACÁ CAMBIÁS TU CONTRASEÑA
+        if clave_ingresada == "kiosko2026": 
             st.session_state['autenticado'] = True
             st.success("Acceso concedido. Cargando sistema...")
             time.sleep(1)
-            st.rerun() # Recarga la página y ahora 'autenticado' será True
+            st.rerun() 
         else:
             st.error("Contraseña incorrecta.")
     
-    # st.stop() es clave: evita que se lea el resto del código hacia abajo
     st.stop() 
 
 # ==========================================
-# A PARTIR DE ACÁ, ES TU CÓDIGO ORIGINAL QUE SOLO SE VE SI ESTÁ LOGUEADO
+# A PARTIR DE ACÁ, ES TU CÓDIGO PRINCIPAL
 # ==========================================
 
 # Configuración de Google Gemini
@@ -36,9 +33,10 @@ cliente_ia = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 modelo_vision = "gemini-3.6-flash"
 
 st.title("Sistema de Lectura de Facturas 🧾")
+
 # --- BARRA LATERAL (MENU Y SOBRE MÍ) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=100) # Podés cambiar este link por la URL de una foto tuya
+    st.image("https://media.licdn.com/dms/image/v2/D5603AQFUOXNVUIczVg/profile-displayphoto-crop_800_800/B56Zo6ewwaJwAI-/0/1761917734504?e=1789603200&v=beta&t=NM6BsGpVZToEgwR4asKlBL4f4E-8VmvBDpdkq9HNU3c", width=100) 
     st.header("👨‍💻 Sobre el Desarrollador")
     st.markdown("""
     **Sistema de Gestión Kiosko v1.0**
@@ -48,9 +46,9 @@ with st.sidebar:
     Herramienta automatizada con Inteligencia Artificial para conciliación de stock y precios.
     
     📫 **Contacto:**
-    - [Email](mailto:tu-correo@gmail.com)
+    - [Email](mailto:robertstrapasson@gmail.com)
     - [GitHub](https://github.com/alessandrostrapa-ops)
-    - [LinkedIn](https://linkedin.com/in/tu-perfil)
+    - [LinkedIn](https://www.linkedin.com/in/robert-strapasson-936747311/)
     """)
     
     st.divider()
@@ -65,53 +63,60 @@ if 'factura_temporal' not in st.session_state:
 
 # --- PASO 1: CARGA Y EXTRACCIÓN ---
 st.subheader("Paso 1: Cargar Factura")
+
+# NUEVO: Input para el proveedor
+nombre_proveedor = st.text_input("🏢 Nombre del Proveedor (Ej: Arcor, Coca-Cola, etc.)")
+
 archivo_subido = st.file_uploader("Elegí una imagen de tu factura", type=["png", "jpg", "jpeg"])
 
 if archivo_subido is not None:
-    # NUEVO: Ponemos la imagen dentro de un expander para que ocupe menos lugar en el celular
-    with st.expander("Ver imagen de la factura"):
-        st.image(Image.open(archivo_subido), caption="Factura actual", use_container_width=True)
-    
-    if st.button("Extraer datos con IA"):
-        with st.spinner('Analizando factura...'):
-            try:
-                instruccion = """
-                Analiza esta factura. Extrae los productos y devuelve la información estrictamente con este formato:
-                Producto | Precio Costo del Bulto
-                No agregues texto adicional, cantidades compradas, ni introducciones, solo Producto y Precio separados por la barra vertical (|).
-                """
-                
-                for intento in range(2):
-                    try:
-                        respuesta = cliente_ia.models.generate_content(
-                            model=modelo_vision,
-                            contents=[instruccion, Image.open(archivo_subido)]
-                        )
-                        texto_extraido = respuesta.text
-                        break
-                    except Exception as e:
-                        if "503" in str(e) and intento == 0:
-                            time.sleep(2)
-                            continue
-                        else:
-                            raise e
-
-                lineas = texto_extraido.strip().split('\n')
-                datos = [linea.split('|') for linea in lineas if '|' in linea]
-                if "Producto" in datos[0][0]:
-                    datos = datos[1:] 
+    # NUEVO: Control para obligar a poner el proveedor
+    if nombre_proveedor.strip() == "":
+        st.warning("⚠️ Por favor, escribí el nombre del proveedor arriba antes de continuar.")
+    else:
+        with st.expander("Ver imagen de la factura"):
+            st.image(Image.open(archivo_subido), caption="Factura actual", use_container_width=True)
+        
+        if st.button("Extraer datos con IA"):
+            with st.spinner('Analizando factura...'):
+                try:
+                    instruccion = """
+                    Analiza esta factura. Extrae los productos y devuelve la información estrictamente con este formato:
+                    Producto | Precio Costo del Bulto
+                    No agregues texto adicional, cantidades compradas, ni introducciones, solo Producto y Precio separados por la barra vertical (|).
+                    """
                     
-                df_temp = pd.DataFrame(datos, columns=['Producto', 'Precio Costo del Bulto'])
-                df_temp['Producto'] = df_temp['Producto'].str.strip()
-                df_temp['Precio Costo del Bulto'] = df_temp['Precio Costo del Bulto'].str.strip().astype(float)
-                
-                df_temp['Unidades por Bulto'] = 1
-                
-                st.session_state['factura_temporal'] = df_temp
-                st.rerun() 
-                
-            except Exception as e:
-                st.error(f"Hubo un error de conexión con la IA: {e}")
+                    for intento in range(2):
+                        try:
+                            respuesta = cliente_ia.models.generate_content(
+                                model=modelo_vision,
+                                contents=[instruccion, Image.open(archivo_subido)]
+                            )
+                            texto_extraido = respuesta.text
+                            break
+                        except Exception as e:
+                            if "503" in str(e) and intento == 0:
+                                time.sleep(2)
+                                continue
+                            else:
+                                raise e
+
+                    lineas = texto_extraido.strip().split('\n')
+                    datos = [linea.split('|') for linea in lineas if '|' in linea]
+                    if "Producto" in datos[0][0]:
+                        datos = datos[1:] 
+                        
+                    df_temp = pd.DataFrame(datos, columns=['Producto', 'Precio Costo del Bulto'])
+                    df_temp['Producto'] = df_temp['Producto'].str.strip()
+                    df_temp['Precio Costo del Bulto'] = df_temp['Precio Costo del Bulto'].str.strip().astype(float)
+                    
+                    df_temp['Unidades por Bulto'] = 1
+                    
+                    st.session_state['factura_temporal'] = df_temp
+                    st.rerun() 
+                    
+                except Exception as e:
+                    st.error(f"Hubo un error de conexión con la IA: {e}")
 
 # --- PASO 2: SIMULADOR Y REVISIÓN MANUAL ---
 if st.session_state['factura_temporal'] is not None:
@@ -141,8 +146,11 @@ if st.session_state['factura_temporal'] is not None:
     df_calculado['Precio Venta (Final)'] = df_calculado['Precio con IVA'] * (1 + porcentaje_ganancia / 100)
     df_calculado = df_calculado.round(2)
     
+    # NUEVO: Insertamos el nombre del proveedor en la tabla
+    df_calculado.insert(0, 'Proveedor', nombre_proveedor)
+    
     st.write("### Vista Previa de Precios (No guardado aún)")
-    df_vista_previa = df_calculado[['Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)']]
+    df_vista_previa = df_calculado[['Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)']]
     st.dataframe(df_vista_previa, use_container_width=True)
     
     # --- PASO 3: ACCIONES MANUALES ---
@@ -157,6 +165,8 @@ if st.session_state['factura_temporal'] is not None:
                 st.session_state['tabla_maestra'] = pd.concat([st.session_state['tabla_maestra'], df_vista_previa], ignore_index=True)
             
             st.session_state['factura_temporal'] = None
+            # NUEVO: Efecto de notificación en la app
+            st.toast('¡Boleta agregada al reporte diario!', icon='✅')
             st.rerun()
 
     with col_btn2:
@@ -169,7 +179,6 @@ st.divider()
 st.subheader("📊 Reporte Acumulado del Día")
 
 if not st.session_state['tabla_maestra'].empty:
-    # También agregué la edición directa a la tabla maestra final para que puedas corregir detalles a último momento
     st.session_state['tabla_maestra'] = st.data_editor(st.session_state['tabla_maestra'], use_container_width=True, hide_index=True)
     
     buffer = io.BytesIO()
@@ -184,6 +193,9 @@ if not st.session_state['tabla_maestra'].empty:
     )
     
     if st.button("Limpiar reporte (Cerrar día)"):
+        # NUEVO: Efecto de celebración
+        st.balloons()
+        time.sleep(2) # Pausa para ver la animación antes de borrar todo
         st.session_state['tabla_maestra'] = pd.DataFrame()
         st.rerun()
 else:
