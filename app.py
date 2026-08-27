@@ -5,6 +5,8 @@ from google import genai
 import io
 import time
 
+from streamlit_gsheets import GSheetsConnection
+
 # --- SISTEMA DE LOGIN (SEGURIDAD) ---
 if 'autenticado' not in st.session_state:
     st.session_state['autenticado'] = False
@@ -32,6 +34,9 @@ if not st.session_state['autenticado']:
 cliente_ia = genai.Client(api_key=st.secrets["GOOGLE_API_KEY"])
 modelo_vision = "gemini-3.6-flash"
 
+# Configuración de base de datos (Google Sheets)
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 st.title("Sistema de Lectura de Facturas 🧾")
 
 # --- BARRA LATERAL (MENU Y SOBRE MÍ) ---
@@ -56,7 +61,9 @@ with st.sidebar:
 
 # --- MEMORIA DEL DASHBOARD ---
 if 'tabla_maestra' not in st.session_state:
-    st.session_state['tabla_maestra'] = pd.DataFrame()
+    st.session_state['tabla_maestra'] = pd.DataFrame(columns=[
+        'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)'
+    ])
 
 if 'factura_temporal' not in st.session_state:
     st.session_state['factura_temporal'] = None
@@ -164,8 +171,10 @@ if st.session_state['factura_temporal'] is not None:
             else:
                 st.session_state['tabla_maestra'] = pd.concat([st.session_state['tabla_maestra'], df_vista_previa], ignore_index=True)
             
+            # NUEVO: Sincronizar con Google Sheets en la nube
+            conn.update(data=st.session_state['tabla_maestra'])
+
             st.session_state['factura_temporal'] = None
-            # NUEVO: Efecto de notificación en la app
             st.toast('¡Boleta agregada al reporte diario!', icon='✅')
             st.rerun()
 
@@ -196,7 +205,15 @@ if not st.session_state['tabla_maestra'].empty:
         # NUEVO: Efecto de celebración
         st.balloons()
         time.sleep(2) # Pausa para ver la animación antes de borrar todo
-        st.session_state['tabla_maestra'] = pd.DataFrame()
+        # NUEVO: Vaciamos la memoria y vaciamos el Google Sheet
+        # Vaciamos la memoria manteniendo las columnas, y vaciamos el Google Sheet
+        df_vacio = pd.DataFrame(columns=[
+            'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)'
+        ])
+        
+        st.session_state['tabla_maestra'] = df_vacio
+        conn.update(data=st.session_state['tabla_maestra'])
+        
         st.rerun()
 else:
     st.info("El reporte para enviar a los jefes está vacío.")
