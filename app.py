@@ -225,16 +225,24 @@ if st.session_state['factura_temporal'] is not None:
     
     with col_btn1:
         if st.button("✅ Agregar boleta al Reporte de Jefes", use_container_width=True):
+            # 1. Guardamos en la memoria DEL DÍA (para el Excel de hoy)
             if st.session_state['tabla_maestra'].empty:
                 st.session_state['tabla_maestra'] = df_vista_previa
             else:
                 st.session_state['tabla_maestra'] = pd.concat([st.session_state['tabla_maestra'], df_vista_previa], ignore_index=True)
             
-            # Sincronizar con Google Sheets en la nube
-            conn.update(data=st.session_state['tabla_maestra'])
+            # 2. Guardamos en el HISTÓRICO de Google Sheets (acumulando para la IA)
+            with st.spinner("Guardando en la base de datos histórica..."):
+                df_historico = conn.read(ttl=0)
+                if df_historico.empty:
+                    df_nuevo_historico = df_vista_previa
+                else:
+                    df_nuevo_historico = pd.concat([df_historico, df_vista_previa], ignore_index=True)
+                
+                conn.update(data=df_nuevo_historico)
 
             st.session_state['factura_temporal'] = None
-            st.toast('¡Boleta agregada al reporte diario!', icon='✅')
+            st.toast('¡Boleta agregada al reporte diario y al historial!', icon='✅')
             st.rerun()
 
     with col_btn2:
@@ -265,13 +273,13 @@ if not st.session_state['tabla_maestra'].empty:
         st.balloons()
         time.sleep(2)
         
-        # Vaciamos la memoria manteniendo las columnas, y vaciamos el Google Sheet
+        # SOLO vaciamos la memoria de la pantalla para el Excel. 
+        # Dejamos la base de datos de Google Sheets intacta.
         df_vacio = pd.DataFrame(columns=[
             'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)', 'Estado'
         ])
         
         st.session_state['tabla_maestra'] = df_vacio
-        conn.update(data=st.session_state['tabla_maestra'])
         
         st.rerun()
 else:
