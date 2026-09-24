@@ -4,6 +4,7 @@ from PIL import Image
 from google import genai
 import io
 import time
+import difflib
 
 from streamlit_gsheets import GSheetsConnection
 
@@ -62,7 +63,7 @@ with st.sidebar:
 # --- MEMORIA DEL DASHBOARD ---
 if 'tabla_maestra' not in st.session_state:
     st.session_state['tabla_maestra'] = pd.DataFrame(columns=[
-        'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)'
+        'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)', 'Estado'
     ])
 
 if 'factura_temporal' not in st.session_state:
@@ -71,13 +72,13 @@ if 'factura_temporal' not in st.session_state:
 # --- PASO 1: CARGA Y EXTRACCIÓN ---
 st.subheader("Paso 1: Cargar Factura")
 
-# NUEVO: Input para el proveedor
+# Input para el proveedor
 nombre_proveedor = st.text_input("🏢 Nombre del Proveedor (Ej: Arcor, Coca-Cola, etc.)")
 
 archivo_subido = st.file_uploader("Elegí una imagen de tu factura", type=["png", "jpg", "jpeg"])
 
 if archivo_subido is not None:
-    # NUEVO: Control para obligar a poner el proveedor
+    # Control para obligar a poner el proveedor
     if nombre_proveedor.strip() == "":
         st.warning("⚠️ Por favor, escribí el nombre del proveedor arriba antes de continuar.")
     else:
@@ -87,7 +88,7 @@ if archivo_subido is not None:
         if st.button("Extraer datos con IA"):
             with st.spinner('Analizando factura...'):
                 try:
-                    # 1. MODIFICAMOS LA INSTRUCCIÓN: Le damos la orden estricta del formato de número
+                    # Instrucción estricta para formato de número y normalización de texto
                     instruccion = """
                     Analiza esta factura. Extrae los productos y devuelve la información estrictamente con este formato:
                     Producto | Precio Costo del Bulto
@@ -125,7 +126,7 @@ if archivo_subido is not None:
                     df_temp = pd.DataFrame(datos, columns=['Producto', 'Precio Costo del Bulto'])
                     df_temp['Producto'] = df_temp['Producto'].str.strip()
                     
-                    # 2. LIMPIEZA DE CÓDIGO: Por si la IA se rebela y mete un signo peso o un espacio raro
+                    # Limpieza de código por si la IA mete un signo peso
                     df_temp['Precio Costo del Bulto'] = df_temp['Precio Costo del Bulto'].str.replace('$', '', regex=False).str.strip().astype(float)
                     
                     df_temp['Unidades por Bulto'] = 1
@@ -135,11 +136,9 @@ if archivo_subido is not None:
                     
                 except Exception as e:
                     error_str = str(e)
-                    # Si el error es por límite de cuota (429)
                     if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
                         st.warning("⏳ ¡Fuimos muy rápido! Alcanzamos el límite de lecturas por minuto de Google. Por favor, esperá unos 35 a 60 segundos antes de escanear la próxima factura.")
                     else:
-                        # Si es cualquier otro error, lo mostramos normal
                         st.error(f"Hubo un error de conexión con la IA: {error_str}")
 
 # --- PASO 2: SIMULADOR Y REVISIÓN MANUAL ---
@@ -170,11 +169,54 @@ if st.session_state['factura_temporal'] is not None:
     df_calculado['Precio Venta (Final)'] = df_calculado['Precio con IVA'] * (1 + porcentaje_ganancia / 100)
     df_calculado = df_calculado.round(2)
     
-    # NUEVO: Insertamos el nombre del proveedor en la tabla
+    # Insertamos el nombre del proveedor en la tabla
     df_calculado.insert(0, 'Proveedor', nombre_proveedor)
     
+    # --- NUEVO MOTOR DE COMPARACIÓN DE PRECIOS ---
+    with st.spinner("Comparando contra precios históricos en la nube..."):
+        try:
+            # Traemos la base de datos de Drive en tiempo real (ttl=0 desactiva la memoria caché)
+            df_historico = conn.read(ttl=0)
+            
+            if not df_historico.empty and 'Producto' in df_historico.columns:
+                # Nos quedamos con el último precio registrado de cada producto
+                df_ultimos = df_historico.drop_duplicates(subset=['Producto'], keep='last')
+                diccionario_precios = dict(zip(df_ultimos['Producto'].str.lower(), df_ultimos['Costo Unitario']))
+                nombres_hist = list(diccionario_precios.keys())
+                
+                def cruzar_precio(nombre_actual, costo_actual):
+                    # Busca el nombre en la base de datos que tenga al menos 80% de similitud
+                    coincidencias = difflib.get_close_matches(nombre_actual.lower(), nombres_hist, n=1, cutoff=0.8)
+                    
+                    if coincidencias:
+                        mejor_coincidencia = coincidencias[0]
+                        costo_viejo = diccionario_precios[mejor_coincidencia]
+                        
+                        if costo_viejo > 0:
+                            variacion = ((costo_actual - costo_viejo) / costo_viejo) * 100
+                            # Filtramos variaciones minúsculas (menores al 1%) por redondeos
+                            if variacion > 1:
+                                return f"🔴 ⬆️ {variacion:.1f}%"
+                            elif variacion < -1:
+                                return f"🟢 ⬇️ {variacion:.1f}%"
+                            else:
+                                return "➖ Igual"
+                    
+                    return "✨ Nuevo"
+
+                # Aplicamos la función matemática a toda la columna
+                df_calculado['Estado'] = df_calculado.apply(
+                    lambda row: cruzar_precio(row['Producto'], row['Costo Unitario']), axis=1
+                )
+            else:
+                df_calculado['Estado'] = "✨ Nuevo"
+                
+        except Exception as e:
+            st.warning(f"No se pudo cruzar el historial (¿Hoja vacía?): {e}")
+            df_calculado['Estado'] = "⚠️ Sin conexión"
+
     st.write("### Vista Previa de Precios (No guardado aún)")
-    df_vista_previa = df_calculado[['Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)']]
+    df_vista_previa = df_calculado[['Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)', 'Estado']]
     st.dataframe(df_vista_previa, use_container_width=True)
     
     # --- PASO 3: ACCIONES MANUALES ---
@@ -188,7 +230,7 @@ if st.session_state['factura_temporal'] is not None:
             else:
                 st.session_state['tabla_maestra'] = pd.concat([st.session_state['tabla_maestra'], df_vista_previa], ignore_index=True)
             
-            # NUEVO: Sincronizar con Google Sheets en la nube
+            # Sincronizar con Google Sheets en la nube
             conn.update(data=st.session_state['tabla_maestra'])
 
             st.session_state['factura_temporal'] = None
@@ -219,13 +261,13 @@ if not st.session_state['tabla_maestra'].empty:
     )
     
     if st.button("Limpiar reporte (Cerrar día)"):
-        # NUEVO: Efecto de celebración
+        # Efecto de celebración
         st.balloons()
-        time.sleep(2) # Pausa para ver la animación antes de borrar todo
-        # NUEVO: Vaciamos la memoria y vaciamos el Google Sheet
+        time.sleep(2)
+        
         # Vaciamos la memoria manteniendo las columnas, y vaciamos el Google Sheet
         df_vacio = pd.DataFrame(columns=[
-            'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)'
+            'Proveedor', 'Producto', 'Unidades por Bulto', 'Costo Unitario', 'Precio con IVA', 'Precio Venta (Final)', 'Estado'
         ])
         
         st.session_state['tabla_maestra'] = df_vacio
