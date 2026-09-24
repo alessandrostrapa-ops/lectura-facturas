@@ -91,8 +91,15 @@ if archivo_subido is not None:
                     instruccion = """
                     Analiza esta factura. Extrae los productos y devuelve la información estrictamente con este formato:
                     Producto | Precio Costo del Bulto
+
+                    REGLAS VITALES PARA EL TEXTO:
+                    1. El precio debe ser un número puro, usando SOLO un punto (.) para los decimales. Sin separador de miles, comas ni signos de pesos. Ejemplo: 1865.09
+                    2. NORMALIZACIÓN DE NOMBRES: Expande las abreviaturas típicas de proveedores para que el nombre del producto sea estandarizado, claro y genérico. 
+                    - Ejemplos: "ALF" -> "Alfajor", "GAL" o "GALL" -> "Galletitas", "CC" -> "Coca Cola", "CHOC" -> "Chocolate", "BOMB" -> "Bombon".
+                    - Elimina códigos numéricos internos del proveedor que estén pegados al nombre.
+                    - Escribe todo con la primera letra en mayúscula.
+                    
                     No agregues texto adicional, cantidades compradas, ni introducciones, solo Producto y Precio separados por la barra vertical (|).
-                    REGLA VITAL: El precio debe ser un número puro, usando SOLO un punto (.) para los decimales. No uses separador de miles, ni comas, ni signos de pesos ($). Ejemplo correcto: 1865.09
                     """
                     
                     for intento in range(2):
